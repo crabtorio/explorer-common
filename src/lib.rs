@@ -10,3 +10,7 @@ impl Bag {
         }
     }
 }
+
+trait Explorer {
+    fn run(&mut self);
+}

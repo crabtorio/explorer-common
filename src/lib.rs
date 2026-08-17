@@ -11,6 +11,6 @@ impl Bag {
     }
 }
 
-trait Explorer {
+pub trait Explorer {
     fn run(&mut self);
 }

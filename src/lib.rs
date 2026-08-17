@@ -1,6 +1,6 @@
 use common_game::components::resource::GenericResource;
 
-struct Bag {
+pub struct Bag {
     resources: Vec<GenericResource>,
 }
 impl Bag {

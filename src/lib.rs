@@ -1,7 +1,7 @@
 use common_game::components::resource::GenericResource;
 
 pub struct Bag {
-    resources: Vec<GenericResource>,
+    pub resources: Vec<GenericResource>,
 }
 impl Bag {
     pub fn new() -> Self {

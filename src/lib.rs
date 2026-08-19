@@ -1,5 +1,7 @@
 use common_game::components::resource::GenericResource;
 
+pub mod logged_channel;
+
 #[derive(Debug)]
 pub struct Bag {
     pub resources: Vec<GenericResource>,

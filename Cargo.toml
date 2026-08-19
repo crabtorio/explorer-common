@@ -5,3 +5,5 @@ edition = "2024"
 
 [dependencies]
 common-game = "3.0.0"
+crossbeam-channel = "0.5.16"
+log = "0.4.33"

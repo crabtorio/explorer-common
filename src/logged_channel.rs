@@ -11,6 +11,19 @@ pub enum ChannelError<T> {
 }
 
 impl<SendT: std::fmt::Debug, RecvT: std::fmt::Debug> LoggedChannel<SendT, RecvT> {
+    /// Construct a new logged channel
+    pub fn new(
+        reciever: crossbeam_channel::Receiver<RecvT>,
+        sender: crossbeam_channel::Sender<SendT>,
+        reciever_ident: String,
+    ) -> Self {
+        LoggedChannel {
+            reciever,
+            sender,
+            reciever_ident,
+        }
+    }
+
     /// Send a message.
     /// Returns a the message, or [`crossbeam_channel::RecvError`] if an error occurs.
     /// ---

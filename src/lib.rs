@@ -15,6 +15,9 @@ impl Bag {
             resources: Vec::new(),
         }
     }
+    pub fn add_resource(&mut self, resource: GenericResource) {
+        self.resources.push(resource);
+    }
     pub fn take_resource(&mut self, resource_type: ResourceType) -> Result<GenericResource, ()> {
         if let Some(index) = self
             .resources

@@ -64,6 +64,20 @@ pub trait Explorer {
     fn run(&mut self);
 }
 
+pub struct BagContent {
+    pub resources: Vec<ResourceType>,
+}
+
+impl From<&Bag> for BagContent {
+    fn from(bag: &Bag) -> Self {
+        let mut vec = Vec::new();
+        for i in &bag.resources {
+            vec.push(i.get_type());
+        }
+        Self { resources: vec }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use common_game::{

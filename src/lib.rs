@@ -15,10 +15,10 @@ impl Bag {
             resources: Vec::new(),
         }
     }
-    pub fn contains(&self, resource_type: ResourceType) -> bool {
+    pub fn contains(&self, resource_type: ResourceType) -> usize {
         self.resources
             .iter()
-            .any(|resource| match (resource, resource_type) {
+            .filter(|resource| match (resource, resource_type) {
                 (
                     GenericResource::BasicResources(basic_resource),
                     ResourceType::Basic(basic_resource_type),
@@ -43,6 +43,7 @@ impl Bag {
                 },
                 _ => false,
             })
+            .count()
     }
 }
 
@@ -120,15 +121,45 @@ mod tests {
     fn test_contains() {
         let bag = make_bag();
 
-        assert!(!bag.contains(ResourceType::Basic(BasicResourceType::Oxygen)));
-        assert!(!bag.contains(ResourceType::Basic(BasicResourceType::Hydrogen)));
-        assert!(bag.contains(ResourceType::Basic(BasicResourceType::Carbon)));
-        assert!(bag.contains(ResourceType::Basic(BasicResourceType::Silicon)));
-        assert!(bag.contains(ResourceType::Complex(ComplexResourceType::Water)));
-        assert!(!bag.contains(ResourceType::Complex(ComplexResourceType::Diamond)));
-        assert!(!bag.contains(ResourceType::Complex(ComplexResourceType::Life)));
-        assert!(!bag.contains(ResourceType::Complex(ComplexResourceType::Robot)));
-        assert!(!bag.contains(ResourceType::Complex(ComplexResourceType::Dolphin)));
-        assert!(!bag.contains(ResourceType::Complex(ComplexResourceType::AIPartner)));
+        assert_eq!(
+            bag.contains(ResourceType::Basic(BasicResourceType::Oxygen)),
+            0
+        );
+        assert_eq!(
+            bag.contains(ResourceType::Basic(BasicResourceType::Hydrogen)),
+            0
+        );
+        assert_eq!(
+            bag.contains(ResourceType::Basic(BasicResourceType::Carbon)),
+            1
+        );
+        assert_eq!(
+            bag.contains(ResourceType::Basic(BasicResourceType::Silicon)),
+            1
+        );
+        assert_eq!(
+            bag.contains(ResourceType::Complex(ComplexResourceType::Water)),
+            1
+        );
+        assert_eq!(
+            bag.contains(ResourceType::Complex(ComplexResourceType::Diamond)),
+            0
+        );
+        assert_eq!(
+            bag.contains(ResourceType::Complex(ComplexResourceType::Life)),
+            0
+        );
+        assert_eq!(
+            bag.contains(ResourceType::Complex(ComplexResourceType::Robot)),
+            0
+        );
+        assert_eq!(
+            bag.contains(ResourceType::Complex(ComplexResourceType::Dolphin)),
+            0
+        );
+        assert_eq!(
+            bag.contains(ResourceType::Complex(ComplexResourceType::AIPartner)),
+            0
+        );
     }
 }

@@ -15,6 +15,16 @@ impl Bag {
             resources: Vec::new(),
         }
     }
+    pub fn take_resource(&mut self, resource_type: ResourceType) -> Result<GenericResource, ()> {
+        if let Some(index) = self
+            .resources
+            .iter()
+            .position(|resource| resource.get_type() == resource_type)
+        {
+            return Ok(self.resources.remove(index));
+        }
+        Err(())
+    }
     pub fn contains(&self, resource_type: ResourceType) -> usize {
         self.resources
             .iter()
@@ -160,6 +170,17 @@ mod tests {
         assert_eq!(
             bag.contains(ResourceType::Complex(ComplexResourceType::AIPartner)),
             0
+        );
+    }
+    #[test]
+    fn test_take_resource() {
+        let mut bag = make_bag();
+
+        let taken = bag.take_resource(ResourceType::Complex(ComplexResourceType::Water));
+
+        assert_eq!(
+            taken.unwrap().get_type(),
+            ResourceType::Complex(ComplexResourceType::Water)
         );
     }
 }

@@ -7,3 +7,4 @@ edition = "2024"
 common-game = "3.0.0"
 crossbeam-channel = "0.5.16"
 log = "0.4.33"
+planet = { git = "https://github.com/crabtorio/crabtorio", branch = "main" }

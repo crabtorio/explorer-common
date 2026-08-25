@@ -153,4 +153,10 @@ impl<SendT: std::fmt::Debug, RecvT: std::fmt::Debug> LoggedChannel<SendT, RecvT>
             },
         }
     }
+    pub fn set_sender(&mut self, sender: crossbeam_channel::Sender<SendT>) {
+        self.sender = sender;
+    }
+    pub fn set_receiver(&mut self, receiver: crossbeam_channel::Receiver<RecvT>) {
+        self.reciever = receiver;
+    }
 }

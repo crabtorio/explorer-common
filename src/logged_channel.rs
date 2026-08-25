@@ -1,4 +1,5 @@
 /// A wrapper around [`crossbeam_channel`] channels that provides automatic logging of message events
+#[derive(Clone)]
 pub struct LoggedChannel<SendT, RecvT> {
     reciever: crossbeam_channel::Receiver<RecvT>,
     sender: crossbeam_channel::Sender<SendT>,

@@ -166,6 +166,11 @@ pub trait Explorer {
             match message {
                 StartExplorerAI => {
                     self.set_auto_mode(true);
+                    if let Ok(()) = self.get_orchestrator_channel().send(
+                        ExplorerToOrchestrator::StartExplorerAIResult {
+                            explorer_id: self.get_id(),
+                        },
+                    ) {}
                 }
                 ResetExplorerAI => self.set_auto_mode(true),
                 KillExplorer => (),

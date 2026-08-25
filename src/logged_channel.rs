@@ -1,5 +1,4 @@
 /// A wrapper around [`crossbeam_channel`] channels that provides automatic logging of message events
-#[derive(Clone)]
 pub struct LoggedChannel<SendT, RecvT> {
     reciever: crossbeam_channel::Receiver<RecvT>,
     sender: crossbeam_channel::Sender<SendT>,
@@ -9,6 +8,16 @@ pub enum ChannelError<T> {
     SendError(crossbeam_channel::SendError<T>),
     RecvError(crossbeam_channel::RecvError),
     InvalidResponseError,
+}
+
+impl<SendT, RecvT> Clone for LoggedChannel<SendT, RecvT> {
+    fn clone(&self) -> Self {
+        Self {
+            reciever: self.reciever.clone(),
+            sender: self.sender.clone(),
+            reciever_ident: self.reciever_ident.clone(),
+        }
+    }
 }
 
 impl<SendT: std::fmt::Debug, RecvT: std::fmt::Debug> LoggedChannel<SendT, RecvT> {

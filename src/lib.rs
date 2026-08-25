@@ -103,21 +103,21 @@ pub trait Explorer {
     fn get_auto_mode(&self) -> bool;
     fn set_auto_mode(&mut self, mode: bool);
     fn get_planet_channel(&self) -> LoggedChannel<ExplorerToPlanet, PlanetToExplorer>;
-    fn set_planet_channel(&mut self, channel: LoggedChannel<ExplorerToPlanet, PlanetToExplorer>);
+    fn set_planet_channel_tx(&mut self, tx: Sender<ExplorerToPlanet>);
+    fn set_planet_channel_rx(&mut self, rx: Receiver<PlanetToExplorer>);
     fn get_orchestrator_channel(
         &self,
     ) -> LoggedChannel<ExplorerToOrchestrator<BagContent>, OrchestratorToExplorer>;
-    fn set_orchestrator_channel(
-        &mut self,
-        channel: LoggedChannel<ExplorerToOrchestrator<BagContent>, OrchestratorToExplorer>,
-    );
+    fn set_orchestrator_channel_tx(&mut self, tx: Sender<ExplorerToOrchestrator<BagContent>>);
+    fn set_orchestrator_channel_rx(&mut self, rx: Receiver<OrchestratorToExplorer>);
+
     //
     fn is_combination_available(&self, resource: ComplexResourceType) -> bool {
-        if let Ok(()) = self
-            .get_planet_channel()
-            .send(ExplorerToPlanet::SupportedCombinationRequest {
-                explorer_id: self.get_id(),
-            })
+        if let Ok(()) =
+            self.get_planet_channel()
+                .send(ExplorerToPlanet::SupportedCombinationRequest {
+                    explorer_id: self.get_id(),
+                })
         {
             if let Ok(msg) = self.get_planet_channel().recv() {
                 if let SupportedCombinationResponse { combination_list } = msg {
@@ -176,7 +176,7 @@ pub trait Explorer {
                 } => {
                     self.set_planet_id(planet_id);
                     if let Some(new_sender) = sender_to_new_planet {
-                        self.set_planet_channel(new_sender);
+                        self.set_planet_channel_tx(new_sender);
                         match self.get_orchestrator_channel().send(MovedToPlanetResult {
                             explorer_id: self.get_id(),
                             planet_id,
@@ -203,10 +203,11 @@ pub trait Explorer {
                         if let Ok(msg) = self.get_planet_channel().recv() {
                             if let SupportedResourceResponse { resource_list } = msg {
                                 if let Ok(()) =
-                                    self.get_orchestrator_channel().send(SupportedResourceResult {
-                                        explorer_id: self.get_id(),
-                                        supported_resources: resource_list,
-                                    })
+                                    self.get_orchestrator_channel()
+                                        .send(SupportedResourceResult {
+                                            explorer_id: self.get_id(),
+                                            supported_resources: resource_list,
+                                        })
                                 {
                                     // Logging
                                 }
@@ -215,19 +216,19 @@ pub trait Explorer {
                     }
                 }
                 SupportedCombinationRequest => {
-                    if let Ok(()) =
-                        self.get_planet_channel()
-                            .send(ExplorerToPlanet::SupportedCombinationRequest {
-                                explorer_id: self.get_id(),
-                            })
-                    {
+                    if let Ok(()) = self.get_planet_channel().send(
+                        ExplorerToPlanet::SupportedCombinationRequest {
+                            explorer_id: self.get_id(),
+                        },
+                    ) {
                         if let Ok(msg) = self.get_planet_channel().recv() {
                             if let SupportedCombinationResponse { combination_list } = msg {
-                                if let Ok(()) =
-                                    self.get_orchestrator_channel().send(SupportedCombinationResult {
+                                if let Ok(()) = self.get_orchestrator_channel().send(
+                                    SupportedCombinationResult {
                                         explorer_id: self.get_id(),
                                         combination_list,
-                                    }) {}
+                                    },
+                                ) {}
                             }
                         }
                     }

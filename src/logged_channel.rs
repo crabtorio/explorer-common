@@ -1,4 +1,4 @@
-use common_game::logging::{ActorType, Channel, EventType, LogEvent, Participant, Payload};
+use common_game::logging::{Channel, EventType, LogEvent, Participant, Payload};
 use std::format;
 
 /// A wrapper around [`crossbeam_channel`] channels that provides automatic logging of message events

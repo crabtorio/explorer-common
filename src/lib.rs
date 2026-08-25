@@ -80,12 +80,7 @@ impl Bag {
 }
 
 pub trait Explorer {
-    fn run(
-        &mut self,
-        rx_planet: Receiver<PlanetToExplorer>,
-        rx_orchestrator: Receiver<OrchestratorToExplorer>,
-        tx_orchestrator: Sender<ExplorerToOrchestrator<BagContent>>,
-    );
+    fn run(&mut self);
     // Getter and setters to force the use of these attributes in any Explorer trait implementation
     // So that the explorer response logic to orchestrator messages can be shared by explorers
     fn get_id(&self) -> ID;

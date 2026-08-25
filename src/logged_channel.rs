@@ -1,8 +1,14 @@
+use common_game::logging::{ActorType, Channel, EventType, LogEvent, Participant, Payload};
+use std::format;
+
 /// A wrapper around [`crossbeam_channel`] channels that provides automatic logging of message events
 pub struct LoggedChannel<SendT, RecvT> {
     reciever: crossbeam_channel::Receiver<RecvT>,
     sender: crossbeam_channel::Sender<SendT>,
-    reciever_ident: String,
+    send_participant: Participant,
+    recv_participant: Participant,
+    send_event: EventType,
+    recv_event: EventType,
 }
 pub enum ChannelError<T> {
     SendError(crossbeam_channel::SendError<T>),
@@ -15,23 +21,49 @@ impl<SendT, RecvT> Clone for LoggedChannel<SendT, RecvT> {
         Self {
             reciever: self.reciever.clone(),
             sender: self.sender.clone(),
-            reciever_ident: self.reciever_ident.clone(),
+            send_participant: self.send_participant.clone(),
+            recv_participant: self.recv_participant.clone(),
+            send_event: self.send_event.clone(),
+            recv_event: self.recv_event.clone(),
         }
     }
 }
 
+enum Direction {
+    Send,
+    Recv,
+}
+
 impl<SendT: std::fmt::Debug, RecvT: std::fmt::Debug> LoggedChannel<SendT, RecvT> {
-    /// Construct a new logged channel
     pub fn new(
         reciever: crossbeam_channel::Receiver<RecvT>,
         sender: crossbeam_channel::Sender<SendT>,
-        reciever_ident: String,
+        send_participant: Participant,
+        recv_participant: Participant,
+        send_event: EventType,
+        recv_event: EventType,
     ) -> Self {
-        LoggedChannel {
+        Self {
             reciever,
             sender,
-            reciever_ident,
+            send_participant,
+            recv_participant,
+            send_event,
+            recv_event,
         }
+    }
+
+    fn make_log_event(&self, direction: Direction, channel: Channel, payload: Payload) -> LogEvent {
+        LogEvent::new(
+            Some(self.send_participant.clone()),
+            Some(self.recv_participant.clone()),
+            match direction {
+                Direction::Send => self.send_event.clone(),
+                Direction::Recv => self.recv_event.clone(),
+            },
+            channel,
+            payload,
+        )
     }
 
     /// Send a message.
@@ -41,13 +73,22 @@ impl<SendT: std::fmt::Debug, RecvT: std::fmt::Debug> LoggedChannel<SendT, RecvT>
     /// - Send
     /// - Send errors
     pub fn send(&self, val: SendT) -> Result<(), crossbeam_channel::SendError<SendT>> {
-        let val_debug = std::format!("{:?}", val);
+        let val_debug = format!("{:?}", val);
         let result = self.sender.send(val);
-
         if result.is_ok() {
-            log::debug!("{} sent to {}", val_debug, self.reciever_ident)
+            self.make_log_event(
+                Direction::Send,
+                Channel::Debug,
+                Payload::from([("Message".into(), format!("Sent {val_debug}"))]),
+            )
+            .emit();
         } else {
-            log::error!("Could not send {} to {}", val_debug, self.reciever_ident)
+            self.make_log_event(
+                Direction::Send,
+                Channel::Debug,
+                Payload::from([("Message".into(), format!("Could not send {val_debug}"))]),
+            )
+            .emit();
         }
 
         return result;
@@ -65,15 +106,24 @@ impl<SendT: std::fmt::Debug, RecvT: std::fmt::Debug> LoggedChannel<SendT, RecvT>
         let result = self.reciever.recv();
         match result {
             Ok(val) => {
-                log::debug!("Recieved {:?} from {}", val, self.reciever_ident);
+                self.make_log_event(
+                    Direction::Recv,
+                    Channel::Debug,
+                    Payload::from([("Message".into(), format!("Recieved {val:?}"))]),
+                )
+                .emit();
                 Ok(val)
             }
             Err(err) => {
-                log::error!(
-                    "{} error while waiting on response from {}",
-                    err,
-                    self.reciever_ident
-                );
+                self.make_log_event(
+                    Direction::Recv,
+                    Channel::Error,
+                    Payload::from([(
+                        "Message".into(),
+                        format!("Got error while awaiting response {err:?}"),
+                    )]),
+                )
+                .emit();
                 Err(err)
             }
         }
@@ -98,18 +148,23 @@ impl<SendT: std::fmt::Debug, RecvT: std::fmt::Debug> LoggedChannel<SendT, RecvT>
     where
         RecvT: Into<T>,
     {
+        let val_debug = format!("{val:?}");
         let send_result = self.send(val);
         match send_result {
             Ok(()) => match self.recv() {
                 Ok(res) => {
                     let res_debug = std::format!("{:?}", res);
                     if ack_to_ckeck != res.into() {
-                        log::error!(
-                            "Invalid response from {:?}. Expected {:?}, got {}",
-                            self.reciever_ident,
-                            ack_to_ckeck,
-                            res_debug
-                        );
+                        self.make_log_event(
+                            Direction::Recv,
+                            Channel::Error,
+                            Payload::from([
+                                ("Message".into(), "Recieved invalid response".into()),
+                                ("Expected".into(), format!("{val_debug:?}")),
+                                ("Got".into(), format!("{res_debug:?}")),
+                            ]),
+                        )
+                        .emit();
                         Err(ChannelError::InvalidResponseError)
                     } else {
                         Ok(())
@@ -132,22 +187,41 @@ impl<SendT: std::fmt::Debug, RecvT: std::fmt::Debug> LoggedChannel<SendT, RecvT>
     /// ---
     /// Respone handling rests entirely on the caller
     pub fn poll(&self) -> Result<Option<RecvT>, ()> {
-        log::trace!("Polling {:?}...", self.reciever_ident);
+        self.make_log_event(
+            Direction::Recv,
+            Channel::Trace,
+            Payload::from([("Message".into(), "Polling started".into())]),
+        )
+        .emit();
         match self.reciever.try_recv() {
             Ok(val) => {
-                log::debug!("Recieved {:?} from {}", val, self.reciever_ident);
+                self.make_log_event(
+                    Direction::Recv,
+                    Channel::Debug,
+                    Payload::from([("Message".into(), format!("Recieved {val:?}"))]),
+                )
+                .emit();
                 Ok(Some(val))
             }
             Err(err) => match err {
                 crossbeam_channel::TryRecvError::Empty => {
-                    log::trace!("Polled {:?}, got no response", self.reciever_ident);
+                    self.make_log_event(
+                        Direction::Recv,
+                        Channel::Trace,
+                        Payload::from([("Message".into(), "Got no response in poll".into())]),
+                    );
                     Ok(None)
                 }
                 crossbeam_channel::TryRecvError::Disconnected => {
-                    log::error!(
-                        "{:?} disconnected unexpectedly while being polled",
-                        self.reciever_ident
-                    );
+                    self.make_log_event(
+                        Direction::Recv,
+                        Channel::Error,
+                        Payload::from([(
+                            "Message".into(),
+                            "Peer disconnected while being polled".into(),
+                        )]),
+                    )
+                    .emit();
                     Err(())
                 }
             },

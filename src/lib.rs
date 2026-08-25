@@ -404,6 +404,7 @@ pub trait Explorer {
     }
 }
 
+#[derive(Debug)]
 pub struct BagContent {
     pub resources: Vec<ResourceType>,
 }

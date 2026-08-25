@@ -1,3 +1,4 @@
+use common_game::components::planet::Planet;
 use common_game::components::resource::GenericResource::{self, ComplexResources};
 use common_game::components::resource::ResourceType::{self, Complex};
 use common_game::components::resource::{BasicResource::*, ComplexResource::*};
@@ -21,6 +22,8 @@ use common_game::protocols::orchestrator_explorer::{
 use common_game::protocols::planet_explorer::PlanetToExplorer::SupportedCombinationResponse;
 use common_game::protocols::planet_explorer::{ExplorerToPlanet, PlanetToExplorer};
 use crossbeam_channel::*;
+
+use crate::logged_channel::LoggedChannel;
 
 pub mod logged_channel;
 
@@ -84,10 +87,11 @@ pub trait Explorer {
         id: ID,
         bag: Bag,
         planet_id: ID,
-        rx_planet: Receiver<PlanetToExplorer>,
-        tx_planet: Sender<ExplorerToPlanet>,
-        rx_orchestrator: Receiver<OrchestratorToExplorer>,
-        tx_orchestrator: Sender<ExplorerToOrchestrator<BagContent>>,
+        planet_channel: LoggedChannel<ExplorerToPlanet, PlanetToExplorer>,
+        orchestrator_channel: LoggedChannel<
+            ExplorerToOrchestrator<BagContent>,
+            OrchestratorToExplorer,
+        >,
     ) -> Self;
     fn run(&mut self);
     // Getter and setters to force the use of these attributes in any Explorer trait implementation
@@ -98,17 +102,17 @@ pub trait Explorer {
     fn set_planet_id(&mut self, new: ID);
     fn get_auto_mode(&self) -> bool;
     fn set_auto_mode(&mut self, mode: bool);
-    fn get_rx_planet(&self) -> Receiver<PlanetToExplorer>;
-    fn set_rx_planet(&mut self, new: Receiver<PlanetToExplorer>);
-    fn get_tx_planet(&self) -> Sender<ExplorerToPlanet>;
-    fn set_tx_planet(&mut self, new: Sender<ExplorerToPlanet>);
-    fn get_rx_orchestrator(&self) -> Receiver<OrchestratorToExplorer>;
-    fn set_rx_orchestrator(&mut self, new: Receiver<OrchestratorToExplorer>);
-    fn get_tx_orchestrator(&self) -> Sender<ExplorerToOrchestrator<BagContent>>;
-    fn set_tx_orchestrator(&mut self, new: Sender<ExplorerToOrchestrator<BagContent>>);
-
+    fn get_planet_channel(&self) -> LoggedChannel<ExplorerToPlanet, PlanetToExplorer>;
+    fn set_planet_channel(&mut self, channel: LoggedChannel<ExplorerToPlanet, PlanetToExplorer>);
+    fn get_orchestrator_channel(
+        &self,
+    ) -> LoggedChannel<ExplorerToOrchestrator<BagContent>, OrchestratorToExplorer>;
+    fn set_orchestrator_channel(
+        &mut self,
+        channel: LoggedChannel<ExplorerToOrchestrator<BagContent>, OrchestratorToExplorer>,
+    );
     //
-    fn is_combination_available(&self, resource: ComplexResourceType) -> bool {
+    /*fn is_combination_available(&self, resource: ComplexResourceType) -> bool {
         if let Ok(()) = self
             .get_tx_planet()
             .send(ExplorerToPlanet::SupportedCombinationRequest {
@@ -410,7 +414,7 @@ pub trait Explorer {
                 }
             }
         }
-    }
+    }*/
 }
 
 #[derive(Debug)]

@@ -112,14 +112,14 @@ pub trait Explorer {
         channel: LoggedChannel<ExplorerToOrchestrator<BagContent>, OrchestratorToExplorer>,
     );
     //
-    /*fn is_combination_available(&self, resource: ComplexResourceType) -> bool {
+    fn is_combination_available(&self, resource: ComplexResourceType) -> bool {
         if let Ok(()) = self
-            .get_tx_planet()
+            .get_planet_channel()
             .send(ExplorerToPlanet::SupportedCombinationRequest {
                 explorer_id: self.get_id(),
             })
         {
-            if let Ok(msg) = self.get_rx_planet().recv() {
+            if let Ok(msg) = self.get_planet_channel().recv() {
                 if let SupportedCombinationResponse { combination_list } = msg {
                     return combination_list.contains(&resource);
                 }
@@ -129,15 +129,15 @@ pub trait Explorer {
     }
     fn combine_and_respond(&mut self, complex_resource_request: ComplexResourceRequest) {
         if let Ok(()) = self
-            .get_tx_planet()
+            .get_planet_channel()
             .send(ExplorerToPlanet::CombineResourceRequest {
                 explorer_id: self.get_id(),
                 msg: complex_resource_request,
             })
         {
-            if let Ok(response) = self.get_rx_planet().recv() {
+            if let Ok(response) = self.get_planet_channel().recv() {
                 if let PlanetToExplorer::CombineResourceResponse { complex_response } = response {
-                    if let Ok(()) = self.get_tx_orchestrator().send(
+                    if let Ok(()) = self.get_orchestrator_channel().send(
                         ExplorerToOrchestrator::CombineResourceResponse {
                             explorer_id: self.get_id(),
                             generated: match complex_response {
@@ -162,7 +162,7 @@ pub trait Explorer {
     //
     fn try_recv_from_orchestrator_and_respond(&mut self) {
         // Checks for a message from the orchestrator
-        if let Ok(message) = self.get_rx_orchestrator().try_recv() {
+        if let Ok(Some(message)) = self.get_orchestrator_channel().poll() {
             match message {
                 StartExplorerAI => {
                     self.set_auto_mode(true);
@@ -176,8 +176,8 @@ pub trait Explorer {
                 } => {
                     self.set_planet_id(planet_id);
                     if let Some(new_sender) = sender_to_new_planet {
-                        self.set_tx_planet(new_sender);
-                        match self.get_tx_orchestrator().send(MovedToPlanetResult {
+                        self.set_planet_channel(new_sender);
+                        match self.get_orchestrator_channel().send(MovedToPlanetResult {
                             explorer_id: self.get_id(),
                             planet_id,
                         }) {
@@ -186,7 +186,7 @@ pub trait Explorer {
                     }
                 }
                 CurrentPlanetRequest => {
-                    if let Ok(()) = self.get_tx_orchestrator().send(CurrentPlanetResult {
+                    if let Ok(()) = self.get_orchestrator_channel().send(CurrentPlanetResult {
                         explorer_id: self.get_id(),
                         planet_id: self.get_planet_id(),
                     }) {
@@ -195,15 +195,15 @@ pub trait Explorer {
                 }
                 SupportedResourceRequest => {
                     if let Ok(()) =
-                        self.get_tx_planet()
+                        self.get_planet_channel()
                             .send(ExplorerToPlanet::SupportedResourceRequest {
                                 explorer_id: self.get_id(),
                             })
                     {
-                        if let Ok(msg) = self.get_rx_planet().recv() {
+                        if let Ok(msg) = self.get_planet_channel().recv() {
                             if let SupportedResourceResponse { resource_list } = msg {
                                 if let Ok(()) =
-                                    self.get_tx_orchestrator().send(SupportedResourceResult {
+                                    self.get_orchestrator_channel().send(SupportedResourceResult {
                                         explorer_id: self.get_id(),
                                         supported_resources: resource_list,
                                     })
@@ -216,37 +216,34 @@ pub trait Explorer {
                 }
                 SupportedCombinationRequest => {
                     if let Ok(()) =
-                        self.get_tx_planet()
+                        self.get_planet_channel()
                             .send(ExplorerToPlanet::SupportedCombinationRequest {
                                 explorer_id: self.get_id(),
                             })
                     {
-                        if let Ok(msg) = self.get_rx_planet().recv() {
+                        if let Ok(msg) = self.get_planet_channel().recv() {
                             if let SupportedCombinationResponse { combination_list } = msg {
                                 if let Ok(()) =
-                                    self.get_tx_orchestrator().send(SupportedCombinationResult {
+                                    self.get_orchestrator_channel().send(SupportedCombinationResult {
                                         explorer_id: self.get_id(),
                                         combination_list,
-                                    })
-                                {
-                                    // Logging
-                                }
+                                    }) {}
                             }
                         }
                     }
                 }
                 OrchestratorToExplorer::GenerateResourceRequest { to_generate } => {
                     if let Ok(()) =
-                        self.get_tx_planet()
+                        self.get_planet_channel()
                             .send(ExplorerToPlanet::GenerateResourceRequest {
                                 explorer_id: self.get_id(),
                                 resource: to_generate,
                             })
                     {
-                        if let Ok(msg) = self.get_rx_planet().recv() {
+                        if let Ok(msg) = self.get_planet_channel().recv() {
                             if let PlanetToExplorer::GenerateResourceResponse { resource } = msg {
                                 if let Some(resource) = resource {
-                                    if let Ok(()) = self.get_tx_orchestrator().send(
+                                    if let Ok(()) = self.get_orchestrator_channel().send(
                                         ExplorerToOrchestrator::GenerateResourceResponse {
                                             explorer_id: self.get_id(),
                                             generated: Ok(()),
@@ -255,7 +252,7 @@ pub trait Explorer {
                                         self.get_bag().resources.push(BasicResources(resource));
                                     }
                                 } else {
-                                    if let Ok(()) = self.get_tx_orchestrator().send(
+                                    if let Ok(()) = self.get_orchestrator_channel().send(
                                         ExplorerToOrchestrator::GenerateResourceResponse {
                                             explorer_id: self.get_id(),
                                             generated: Err(String::from("No resource was created")),
@@ -280,7 +277,7 @@ pub trait Explorer {
                         ) {
                             self.combine_and_respond(ComplexResourceRequest::Diamond(res1, res2));
                         } else {
-                            if let Ok(()) = self.get_tx_orchestrator().send(
+                            if let Ok(()) = self.get_orchestrator_channel().send(
                                 ExplorerToOrchestrator::CombineResourceResponse {
                                     explorer_id: self.get_id(),
                                     generated: Err(String::from(
@@ -302,7 +299,7 @@ pub trait Explorer {
                         ) {
                             self.combine_and_respond(ComplexResourceRequest::Water(res1, res2));
                         } else {
-                            if let Ok(()) = self.get_tx_orchestrator().send(
+                            if let Ok(()) = self.get_orchestrator_channel().send(
                                 ExplorerToOrchestrator::CombineResourceResponse {
                                     explorer_id: self.get_id(),
                                     generated: Err(String::from(
@@ -324,7 +321,7 @@ pub trait Explorer {
                         ) {
                             self.combine_and_respond(ComplexResourceRequest::Life(res1, res2));
                         } else {
-                            if let Ok(()) = self.get_tx_orchestrator().send(
+                            if let Ok(()) = self.get_orchestrator_channel().send(
                                 ExplorerToOrchestrator::CombineResourceResponse {
                                     explorer_id: self.get_id(),
                                     generated: Err(String::from(
@@ -346,7 +343,7 @@ pub trait Explorer {
                         ) {
                             self.combine_and_respond(ComplexResourceRequest::Robot(res1, res2));
                         } else {
-                            if let Ok(()) = self.get_tx_orchestrator().send(
+                            if let Ok(()) = self.get_orchestrator_channel().send(
                                 ExplorerToOrchestrator::CombineResourceResponse {
                                     explorer_id: self.get_id(),
                                     generated: Err(String::from(
@@ -368,7 +365,7 @@ pub trait Explorer {
                         ) {
                             self.combine_and_respond(ComplexResourceRequest::Dolphin(res1, res2));
                         } else {
-                            if let Ok(()) = self.get_tx_orchestrator().send(
+                            if let Ok(()) = self.get_orchestrator_channel().send(
                                 ExplorerToOrchestrator::CombineResourceResponse {
                                     explorer_id: self.get_id(),
                                     generated: Err(String::from(
@@ -390,7 +387,7 @@ pub trait Explorer {
                         ) {
                             self.combine_and_respond(ComplexResourceRequest::AIPartner(res1, res2));
                         } else {
-                            if let Ok(()) = self.get_tx_orchestrator().send(
+                            if let Ok(()) = self.get_orchestrator_channel().send(
                                 ExplorerToOrchestrator::CombineResourceResponse {
                                     explorer_id: self.get_id(),
                                     generated: Err(String::from(
@@ -402,7 +399,7 @@ pub trait Explorer {
                     }
                 },
                 BagContentRequest => {
-                    if let Ok(()) = self.get_tx_orchestrator().send(BagContentResponse {
+                    if let Ok(()) = self.get_orchestrator_channel().send(BagContentResponse {
                         explorer_id: self.get_id(),
                         bag_content: BagContent::from(self.get_bag()),
                     }) {}
@@ -414,7 +411,7 @@ pub trait Explorer {
                 }
             }
         }
-    }*/
+    }
 }
 
 #[derive(Debug)]

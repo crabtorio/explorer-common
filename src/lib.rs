@@ -97,7 +97,7 @@ pub trait Explorer {
         loop {
             if self.get_auto_mode() {
                 if !self.explorer_ai() {
-                    return;
+                    break;
                 }
             }
 
@@ -116,7 +116,7 @@ pub trait Explorer {
                         self.set_auto_mode(true);
                         self.get_bag().resources.clear();
                     }
-                    KillExplorer => {}
+                    KillExplorer => break,
                     StopExplorerAI => self.set_auto_mode(false),
                     MoveToPlanet {
                         sender_to_new_planet,

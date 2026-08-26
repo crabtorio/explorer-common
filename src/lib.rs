@@ -1,4 +1,3 @@
-use common_game::components::planet::Planet;
 use common_game::components::resource::GenericResource::{self, ComplexResources};
 use common_game::components::resource::ResourceType::{self, Complex};
 use common_game::components::resource::{BasicResource::*, ComplexResource::*};
@@ -160,7 +159,7 @@ pub trait Explorer {
     }
 
     //
-    fn try_recv_from_orchestrator_and_respond(&mut self) {
+    fn try_recv_from_orchestrator_and_respond(&mut self) -> bool {
         // Checks for a message from the orchestrator
         if let Ok(Some(message)) = self.get_orchestrator_channel().poll() {
             match message {
@@ -172,8 +171,11 @@ pub trait Explorer {
                         },
                     ) {}
                 }
-                ResetExplorerAI => self.set_auto_mode(true),
-                KillExplorer => (),
+                ResetExplorerAI => {
+                    self.set_auto_mode(true);
+                    self.get_bag().resources.clear();
+                }
+                KillExplorer => return false,
                 StopExplorerAI => self.set_auto_mode(false),
                 MoveToPlanet {
                     sender_to_new_planet,
@@ -182,21 +184,17 @@ pub trait Explorer {
                     self.set_planet_id(planet_id);
                     if let Some(new_sender) = sender_to_new_planet {
                         self.set_planet_channel_tx(new_sender);
-                        match self.get_orchestrator_channel().send(MovedToPlanetResult {
+                        if let Ok(()) = self.get_orchestrator_channel().send(MovedToPlanetResult {
                             explorer_id: self.get_id(),
                             planet_id,
-                        }) {
-                            _ => (), // Logging
-                        }
+                        }) {}
                     }
                 }
                 CurrentPlanetRequest => {
                     if let Ok(()) = self.get_orchestrator_channel().send(CurrentPlanetResult {
                         explorer_id: self.get_id(),
                         planet_id: self.get_planet_id(),
-                    }) {
-                        // Logging
-                    }
+                    }) {}
                 }
                 SupportedResourceRequest => {
                     if let Ok(()) =
@@ -213,9 +211,7 @@ pub trait Explorer {
                                             explorer_id: self.get_id(),
                                             supported_resources: resource_list,
                                         })
-                                {
-                                    // Logging
-                                }
+                                {}
                             }
                         }
                     }
@@ -417,6 +413,7 @@ pub trait Explorer {
                 }
             }
         }
+        true
     }
 }
 

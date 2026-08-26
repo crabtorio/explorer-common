@@ -80,7 +80,11 @@ impl Bag {
             .count()
     }
 }
-
+pub enum AiReturn {
+    Stop,
+    Reset,
+    Kill,
+}
 pub trait Explorer {
     fn new(
         id: ID,
@@ -92,12 +96,18 @@ pub trait Explorer {
             OrchestratorToExplorer,
         >,
     ) -> Self;
-    fn explorer_ai(&mut self) -> bool; // false if the explorer is dead, true otherwise
+    fn explorer_ai(&mut self) -> AiReturn; // false if the explorer is dead, true otherwise
     fn run(&mut self) {
         loop {
             if self.get_auto_mode() {
-                if !self.explorer_ai() {
-                    break;
+                match self.explorer_ai() {
+                    AiReturn::Stop => self.set_auto_mode(false),
+                    AiReturn::Reset => {
+                        self.set_auto_mode(false);
+                        self.get_bag().resources.clear();
+                        self.reset();
+                    }
+                    AiReturn::Kill => break,
                 }
             }
 

@@ -92,7 +92,298 @@ pub trait Explorer {
             OrchestratorToExplorer,
         >,
     ) -> Self;
-    fn run(&mut self);
+    fn explorer_ai(&mut self) -> bool; // false if the explorer is dead, true otherwise
+    fn run(&mut self) {
+        loop {
+            if self.get_auto_mode() {
+                if !self.explorer_ai() {
+                    return;
+                }
+            }
+
+            // Checks for a message from the orchestrator (old try_recv_from_orchestrator_and_respond())
+            if let Ok(Some(message)) = self.get_orchestrator_channel().poll() {
+                match message {
+                    StartExplorerAI => {
+                        self.set_auto_mode(true);
+                        if let Ok(()) = self.get_orchestrator_channel().send(
+                            ExplorerToOrchestrator::StartExplorerAIResult {
+                                explorer_id: self.get_id(),
+                            },
+                        ) {}
+                    }
+                    ResetExplorerAI => {
+                        self.set_auto_mode(true);
+                        self.get_bag().resources.clear();
+                    }
+                    KillExplorer => {}
+                    StopExplorerAI => self.set_auto_mode(false),
+                    MoveToPlanet {
+                        sender_to_new_planet,
+                        planet_id,
+                    } => {
+                        self.set_planet_id(planet_id);
+                        if let Some(new_sender) = sender_to_new_planet {
+                            self.set_planet_channel_tx(new_sender);
+                            if let Ok(()) =
+                                self.get_orchestrator_channel().send(MovedToPlanetResult {
+                                    explorer_id: self.get_id(),
+                                    planet_id,
+                                })
+                            {}
+                        }
+                    }
+                    CurrentPlanetRequest => {
+                        if let Ok(()) = self.get_orchestrator_channel().send(CurrentPlanetResult {
+                            explorer_id: self.get_id(),
+                            planet_id: self.get_planet_id(),
+                        }) {}
+                    }
+                    SupportedResourceRequest => {
+                        if let Ok(()) = self.get_planet_channel().send(
+                            ExplorerToPlanet::SupportedResourceRequest {
+                                explorer_id: self.get_id(),
+                            },
+                        ) {
+                            if let Ok(msg) = self.get_planet_channel().recv() {
+                                if let SupportedResourceResponse { resource_list } = msg {
+                                    if let Ok(()) = self.get_orchestrator_channel().send(
+                                        SupportedResourceResult {
+                                            explorer_id: self.get_id(),
+                                            supported_resources: resource_list,
+                                        },
+                                    ) {}
+                                }
+                            }
+                        }
+                    }
+                    SupportedCombinationRequest => {
+                        if let Ok(()) = self.get_planet_channel().send(
+                            ExplorerToPlanet::SupportedCombinationRequest {
+                                explorer_id: self.get_id(),
+                            },
+                        ) {
+                            if let Ok(msg) = self.get_planet_channel().recv() {
+                                if let SupportedCombinationResponse { combination_list } = msg {
+                                    if let Ok(()) = self.get_orchestrator_channel().send(
+                                        SupportedCombinationResult {
+                                            explorer_id: self.get_id(),
+                                            combination_list,
+                                        },
+                                    ) {}
+                                }
+                            }
+                        }
+                    }
+                    OrchestratorToExplorer::GenerateResourceRequest { to_generate } => {
+                        if let Ok(()) = self.get_planet_channel().send(
+                            ExplorerToPlanet::GenerateResourceRequest {
+                                explorer_id: self.get_id(),
+                                resource: to_generate,
+                            },
+                        ) {
+                            if let Ok(msg) = self.get_planet_channel().recv() {
+                                if let PlanetToExplorer::GenerateResourceResponse { resource } = msg
+                                {
+                                    if let Some(resource) = resource {
+                                        if let Ok(()) = self.get_orchestrator_channel().send(
+                                            ExplorerToOrchestrator::GenerateResourceResponse {
+                                                explorer_id: self.get_id(),
+                                                generated: Ok(()),
+                                            },
+                                        ) {
+                                            self.get_bag().resources.push(BasicResources(resource));
+                                        }
+                                    } else {
+                                        if let Ok(()) = self.get_orchestrator_channel().send(
+                                            ExplorerToOrchestrator::GenerateResourceResponse {
+                                                explorer_id: self.get_id(),
+                                                generated: Err(String::from(
+                                                    "No resource was created",
+                                                )),
+                                            },
+                                        ) {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    OrchestratorToExplorer::CombineResourceRequest { to_generate } => {
+                        match to_generate {
+                            ComplexResourceType::Diamond => {
+                                if let (
+                                    Ok(BasicResources(Carbon(res1))),
+                                    Ok(BasicResources(Carbon(res2))),
+                                ) = (
+                                    self.get_bag().take_resource(ResourceType::Basic(
+                                        BasicResourceType::Carbon,
+                                    )),
+                                    self.get_bag().take_resource(ResourceType::Basic(
+                                        BasicResourceType::Carbon,
+                                    )),
+                                ) {
+                                    self.combine_and_respond(ComplexResourceRequest::Diamond(
+                                        res1, res2,
+                                    ));
+                                } else {
+                                    if let Ok(()) = self.get_orchestrator_channel().send(
+                                        ExplorerToOrchestrator::CombineResourceResponse {
+                                            explorer_id: self.get_id(),
+                                            generated: Err(String::from(
+                                                "Explorer is missing the required resources",
+                                            )),
+                                        },
+                                    ) {}
+                                }
+                            }
+                            ComplexResourceType::Water => {
+                                if let (
+                                    Ok(BasicResources(Hydrogen(res1))),
+                                    Ok(BasicResources(Oxygen(res2))),
+                                ) = (
+                                    self.get_bag().take_resource(ResourceType::Basic(
+                                        BasicResourceType::Hydrogen,
+                                    )),
+                                    self.get_bag().take_resource(ResourceType::Basic(
+                                        BasicResourceType::Oxygen,
+                                    )),
+                                ) {
+                                    self.combine_and_respond(ComplexResourceRequest::Water(
+                                        res1, res2,
+                                    ));
+                                } else {
+                                    if let Ok(()) = self.get_orchestrator_channel().send(
+                                        ExplorerToOrchestrator::CombineResourceResponse {
+                                            explorer_id: self.get_id(),
+                                            generated: Err(String::from(
+                                                "Explorer is missing the required resources",
+                                            )),
+                                        },
+                                    ) {}
+                                }
+                            }
+                            ComplexResourceType::Life => {
+                                if let (
+                                    Ok(ComplexResources(Water(res1))),
+                                    Ok(BasicResources(Carbon(res2))),
+                                ) = (
+                                    self.get_bag().take_resource(ResourceType::Complex(
+                                        ComplexResourceType::Water,
+                                    )),
+                                    self.get_bag().take_resource(ResourceType::Basic(
+                                        BasicResourceType::Carbon,
+                                    )),
+                                ) {
+                                    self.combine_and_respond(ComplexResourceRequest::Life(
+                                        res1, res2,
+                                    ));
+                                } else {
+                                    if let Ok(()) = self.get_orchestrator_channel().send(
+                                        ExplorerToOrchestrator::CombineResourceResponse {
+                                            explorer_id: self.get_id(),
+                                            generated: Err(String::from(
+                                                "Explorer is missing the required resources",
+                                            )),
+                                        },
+                                    ) {}
+                                }
+                            }
+                            ComplexResourceType::Robot => {
+                                if let (
+                                    Ok(BasicResources(Silicon(res1))),
+                                    Ok(ComplexResources(Life(res2))),
+                                ) = (
+                                    self.get_bag().take_resource(ResourceType::Basic(
+                                        BasicResourceType::Silicon,
+                                    )),
+                                    self.get_bag().take_resource(ResourceType::Complex(
+                                        ComplexResourceType::Life,
+                                    )),
+                                ) {
+                                    self.combine_and_respond(ComplexResourceRequest::Robot(
+                                        res1, res2,
+                                    ));
+                                } else {
+                                    if let Ok(()) = self.get_orchestrator_channel().send(
+                                        ExplorerToOrchestrator::CombineResourceResponse {
+                                            explorer_id: self.get_id(),
+                                            generated: Err(String::from(
+                                                "Explorer is missing the required resources",
+                                            )),
+                                        },
+                                    ) {}
+                                }
+                            }
+                            ComplexResourceType::Dolphin => {
+                                if let (
+                                    Ok(ComplexResources(Water(res1))),
+                                    Ok(ComplexResources(Life(res2))),
+                                ) = (
+                                    self.get_bag().take_resource(ResourceType::Complex(
+                                        ComplexResourceType::Water,
+                                    )),
+                                    self.get_bag().take_resource(ResourceType::Complex(
+                                        ComplexResourceType::Life,
+                                    )),
+                                ) {
+                                    self.combine_and_respond(ComplexResourceRequest::Dolphin(
+                                        res1, res2,
+                                    ));
+                                } else {
+                                    if let Ok(()) = self.get_orchestrator_channel().send(
+                                        ExplorerToOrchestrator::CombineResourceResponse {
+                                            explorer_id: self.get_id(),
+                                            generated: Err(String::from(
+                                                "Explorer is missing the required resources",
+                                            )),
+                                        },
+                                    ) {}
+                                }
+                            }
+                            ComplexResourceType::AIPartner => {
+                                if let (
+                                    Ok(ComplexResources(Robot(res1))),
+                                    Ok(ComplexResources(Diamond(res2))),
+                                ) = (
+                                    self.get_bag().take_resource(ResourceType::Complex(
+                                        ComplexResourceType::Robot,
+                                    )),
+                                    self.get_bag().take_resource(ResourceType::Complex(
+                                        ComplexResourceType::Diamond,
+                                    )),
+                                ) {
+                                    self.combine_and_respond(ComplexResourceRequest::AIPartner(
+                                        res1, res2,
+                                    ));
+                                } else {
+                                    if let Ok(()) = self.get_orchestrator_channel().send(
+                                        ExplorerToOrchestrator::CombineResourceResponse {
+                                            explorer_id: self.get_id(),
+                                            generated: Err(String::from(
+                                                "Explorer is missing the required resources",
+                                            )),
+                                        },
+                                    ) {}
+                                }
+                            }
+                        }
+                    }
+                    BagContentRequest => {
+                        if let Ok(()) = self.get_orchestrator_channel().send(BagContentResponse {
+                            explorer_id: self.get_id(),
+                            bag_content: BagContent::from(self.get_bag()),
+                        }) {}
+                    }
+                    NeighborsResponse { neighbors } => {
+                        // Never going to happen here as when it happens is in response
+                        // to the explorer request, after which the explorer will block
+                        // and wait for this response
+                    }
+                }
+            }
+        }
+    }
+    fn reset(&mut self);
     // Getter and setters to force the use of these attributes in any Explorer trait implementation
     // So that the explorer response logic to orchestrator messages can be shared by explorers
     fn get_id(&self) -> ID;
@@ -156,264 +447,6 @@ pub trait Explorer {
                 }
             }
         }
-    }
-
-    //
-    fn try_recv_from_orchestrator_and_respond(&mut self) -> bool {
-        // Checks for a message from the orchestrator
-        if let Ok(Some(message)) = self.get_orchestrator_channel().poll() {
-            match message {
-                StartExplorerAI => {
-                    self.set_auto_mode(true);
-                    if let Ok(()) = self.get_orchestrator_channel().send(
-                        ExplorerToOrchestrator::StartExplorerAIResult {
-                            explorer_id: self.get_id(),
-                        },
-                    ) {}
-                }
-                ResetExplorerAI => {
-                    self.set_auto_mode(true);
-                    self.get_bag().resources.clear();
-                }
-                KillExplorer => return false,
-                StopExplorerAI => self.set_auto_mode(false),
-                MoveToPlanet {
-                    sender_to_new_planet,
-                    planet_id,
-                } => {
-                    self.set_planet_id(planet_id);
-                    if let Some(new_sender) = sender_to_new_planet {
-                        self.set_planet_channel_tx(new_sender);
-                        if let Ok(()) = self.get_orchestrator_channel().send(MovedToPlanetResult {
-                            explorer_id: self.get_id(),
-                            planet_id,
-                        }) {}
-                    }
-                }
-                CurrentPlanetRequest => {
-                    if let Ok(()) = self.get_orchestrator_channel().send(CurrentPlanetResult {
-                        explorer_id: self.get_id(),
-                        planet_id: self.get_planet_id(),
-                    }) {}
-                }
-                SupportedResourceRequest => {
-                    if let Ok(()) =
-                        self.get_planet_channel()
-                            .send(ExplorerToPlanet::SupportedResourceRequest {
-                                explorer_id: self.get_id(),
-                            })
-                    {
-                        if let Ok(msg) = self.get_planet_channel().recv() {
-                            if let SupportedResourceResponse { resource_list } = msg {
-                                if let Ok(()) =
-                                    self.get_orchestrator_channel()
-                                        .send(SupportedResourceResult {
-                                            explorer_id: self.get_id(),
-                                            supported_resources: resource_list,
-                                        })
-                                {}
-                            }
-                        }
-                    }
-                }
-                SupportedCombinationRequest => {
-                    if let Ok(()) = self.get_planet_channel().send(
-                        ExplorerToPlanet::SupportedCombinationRequest {
-                            explorer_id: self.get_id(),
-                        },
-                    ) {
-                        if let Ok(msg) = self.get_planet_channel().recv() {
-                            if let SupportedCombinationResponse { combination_list } = msg {
-                                if let Ok(()) = self.get_orchestrator_channel().send(
-                                    SupportedCombinationResult {
-                                        explorer_id: self.get_id(),
-                                        combination_list,
-                                    },
-                                ) {}
-                            }
-                        }
-                    }
-                }
-                OrchestratorToExplorer::GenerateResourceRequest { to_generate } => {
-                    if let Ok(()) =
-                        self.get_planet_channel()
-                            .send(ExplorerToPlanet::GenerateResourceRequest {
-                                explorer_id: self.get_id(),
-                                resource: to_generate,
-                            })
-                    {
-                        if let Ok(msg) = self.get_planet_channel().recv() {
-                            if let PlanetToExplorer::GenerateResourceResponse { resource } = msg {
-                                if let Some(resource) = resource {
-                                    if let Ok(()) = self.get_orchestrator_channel().send(
-                                        ExplorerToOrchestrator::GenerateResourceResponse {
-                                            explorer_id: self.get_id(),
-                                            generated: Ok(()),
-                                        },
-                                    ) {
-                                        self.get_bag().resources.push(BasicResources(resource));
-                                    }
-                                } else {
-                                    if let Ok(()) = self.get_orchestrator_channel().send(
-                                        ExplorerToOrchestrator::GenerateResourceResponse {
-                                            explorer_id: self.get_id(),
-                                            generated: Err(String::from("No resource was created")),
-                                        },
-                                    ) {}
-                                }
-                            }
-                        }
-                    }
-                }
-                OrchestratorToExplorer::CombineResourceRequest { to_generate } => match to_generate
-                {
-                    ComplexResourceType::Diamond => {
-                        if let (
-                            Ok(BasicResources(Carbon(res1))),
-                            Ok(BasicResources(Carbon(res2))),
-                        ) = (
-                            self.get_bag()
-                                .take_resource(ResourceType::Basic(BasicResourceType::Carbon)),
-                            self.get_bag()
-                                .take_resource(ResourceType::Basic(BasicResourceType::Carbon)),
-                        ) {
-                            self.combine_and_respond(ComplexResourceRequest::Diamond(res1, res2));
-                        } else {
-                            if let Ok(()) = self.get_orchestrator_channel().send(
-                                ExplorerToOrchestrator::CombineResourceResponse {
-                                    explorer_id: self.get_id(),
-                                    generated: Err(String::from(
-                                        "Explorer is missing the required resources",
-                                    )),
-                                },
-                            ) {}
-                        }
-                    }
-                    ComplexResourceType::Water => {
-                        if let (
-                            Ok(BasicResources(Hydrogen(res1))),
-                            Ok(BasicResources(Oxygen(res2))),
-                        ) = (
-                            self.get_bag()
-                                .take_resource(ResourceType::Basic(BasicResourceType::Hydrogen)),
-                            self.get_bag()
-                                .take_resource(ResourceType::Basic(BasicResourceType::Oxygen)),
-                        ) {
-                            self.combine_and_respond(ComplexResourceRequest::Water(res1, res2));
-                        } else {
-                            if let Ok(()) = self.get_orchestrator_channel().send(
-                                ExplorerToOrchestrator::CombineResourceResponse {
-                                    explorer_id: self.get_id(),
-                                    generated: Err(String::from(
-                                        "Explorer is missing the required resources",
-                                    )),
-                                },
-                            ) {}
-                        }
-                    }
-                    ComplexResourceType::Life => {
-                        if let (
-                            Ok(ComplexResources(Water(res1))),
-                            Ok(BasicResources(Carbon(res2))),
-                        ) = (
-                            self.get_bag()
-                                .take_resource(ResourceType::Complex(ComplexResourceType::Water)),
-                            self.get_bag()
-                                .take_resource(ResourceType::Basic(BasicResourceType::Carbon)),
-                        ) {
-                            self.combine_and_respond(ComplexResourceRequest::Life(res1, res2));
-                        } else {
-                            if let Ok(()) = self.get_orchestrator_channel().send(
-                                ExplorerToOrchestrator::CombineResourceResponse {
-                                    explorer_id: self.get_id(),
-                                    generated: Err(String::from(
-                                        "Explorer is missing the required resources",
-                                    )),
-                                },
-                            ) {}
-                        }
-                    }
-                    ComplexResourceType::Robot => {
-                        if let (
-                            Ok(BasicResources(Silicon(res1))),
-                            Ok(ComplexResources(Life(res2))),
-                        ) = (
-                            self.get_bag()
-                                .take_resource(ResourceType::Basic(BasicResourceType::Silicon)),
-                            self.get_bag()
-                                .take_resource(ResourceType::Complex(ComplexResourceType::Life)),
-                        ) {
-                            self.combine_and_respond(ComplexResourceRequest::Robot(res1, res2));
-                        } else {
-                            if let Ok(()) = self.get_orchestrator_channel().send(
-                                ExplorerToOrchestrator::CombineResourceResponse {
-                                    explorer_id: self.get_id(),
-                                    generated: Err(String::from(
-                                        "Explorer is missing the required resources",
-                                    )),
-                                },
-                            ) {}
-                        }
-                    }
-                    ComplexResourceType::Dolphin => {
-                        if let (
-                            Ok(ComplexResources(Water(res1))),
-                            Ok(ComplexResources(Life(res2))),
-                        ) = (
-                            self.get_bag()
-                                .take_resource(ResourceType::Complex(ComplexResourceType::Water)),
-                            self.get_bag()
-                                .take_resource(ResourceType::Complex(ComplexResourceType::Life)),
-                        ) {
-                            self.combine_and_respond(ComplexResourceRequest::Dolphin(res1, res2));
-                        } else {
-                            if let Ok(()) = self.get_orchestrator_channel().send(
-                                ExplorerToOrchestrator::CombineResourceResponse {
-                                    explorer_id: self.get_id(),
-                                    generated: Err(String::from(
-                                        "Explorer is missing the required resources",
-                                    )),
-                                },
-                            ) {}
-                        }
-                    }
-                    ComplexResourceType::AIPartner => {
-                        if let (
-                            Ok(ComplexResources(Robot(res1))),
-                            Ok(ComplexResources(Diamond(res2))),
-                        ) = (
-                            self.get_bag()
-                                .take_resource(ResourceType::Complex(ComplexResourceType::Robot)),
-                            self.get_bag()
-                                .take_resource(ResourceType::Complex(ComplexResourceType::Diamond)),
-                        ) {
-                            self.combine_and_respond(ComplexResourceRequest::AIPartner(res1, res2));
-                        } else {
-                            if let Ok(()) = self.get_orchestrator_channel().send(
-                                ExplorerToOrchestrator::CombineResourceResponse {
-                                    explorer_id: self.get_id(),
-                                    generated: Err(String::from(
-                                        "Explorer is missing the required resources",
-                                    )),
-                                },
-                            ) {}
-                        }
-                    }
-                },
-                BagContentRequest => {
-                    if let Ok(()) = self.get_orchestrator_channel().send(BagContentResponse {
-                        explorer_id: self.get_id(),
-                        bag_content: BagContent::from(self.get_bag()),
-                    }) {}
-                }
-                NeighborsResponse { neighbors } => {
-                    // Never going to happen here as when it happens is in response
-                    // to the explorer request, after which the explorer will block
-                    // and wait for this response
-                }
-            }
-        }
-        true
     }
 }
 

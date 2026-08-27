@@ -98,6 +98,7 @@ pub trait Explorer {
     ) -> Self;
     fn explorer_ai(&mut self) -> AiReturn; // false if the explorer is dead, true otherwise
     fn run(&mut self) {
+        self.set_auto_mode(false);
         loop {
             if self.get_auto_mode() {
                 match self.explorer_ai() {

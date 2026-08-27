@@ -113,7 +113,7 @@ pub trait Explorer {
             }
 
             // Checks for a message from the orchestrator (old try_recv_from_orchestrator_and_respond())
-            if let Ok(Some(message)) = self.get_orchestrator_channel().poll() {
+            if let Ok(message) = self.get_orchestrator_channel().recv() {
                 match message {
                     StartExplorerAI => {
                         self.set_auto_mode(true);

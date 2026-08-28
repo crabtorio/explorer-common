@@ -1,1 +1,5 @@
 /target
+/.idea/.gitignore
+/.idea/Common Explorer.iml
+/.idea/modules.xml
+/.idea/vcs.xml

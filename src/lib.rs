@@ -102,13 +102,29 @@ pub trait Explorer {
         loop {
             if self.get_auto_mode() {
                 match self.explorer_ai() {
-                    AiReturn::Stop => self.set_auto_mode(false),
+                    AiReturn::Stop => {
+                        self.set_auto_mode(false);
+                        match self.get_orchestrator_channel().send(StopExplorerAIResult{explorer_id: self.get_id()}) {
+                            Ok(_) => {},
+                            Err(a) => panic!("Failed due to stop shenanigans {}", a),
+                        }
+                    },
                     AiReturn::Reset => {
                         self.set_auto_mode(false);
                         self.get_bag().resources.clear();
                         self.reset();
+                        match self.get_orchestrator_channel().send(ResetExplorerAIResult{explorer_id: self.get_id()}) {
+                            Ok(_) => {},
+                            Err(a) => panic!("Failed due to reset shenanigans {}", a),
+                        }
                     }
-                    AiReturn::Kill => break,
+                    AiReturn::Kill => {
+                        match self.get_orchestrator_channel().send(KillExplorerResult{explorer_id: self.get_id()}) {
+                            Ok(_) => {},
+                            Err(a) => panic!("Failed due to kill shenanigans {}", a),
+                        }
+                        break
+                    },
                 }
             }
 

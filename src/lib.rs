@@ -124,8 +124,9 @@ pub trait Explorer {
                         ) {}
                     }
                     ResetExplorerAI => {
-                        self.set_auto_mode(true);
+                        self.set_auto_mode(false);
                         self.get_bag().resources.clear();
+                        self.reset();
                     }
                     KillExplorer => break,
                     StopExplorerAI => self.set_auto_mode(false),
@@ -391,6 +392,8 @@ pub trait Explorer {
                         // and wait for this response
                     }
                 }
+            } else {
+                break;
             }
         }
     }

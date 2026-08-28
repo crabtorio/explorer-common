@@ -96,7 +96,7 @@ pub trait Explorer {
             OrchestratorToExplorer,
         >,
     ) -> Self;
-    fn explorer_ai(&mut self) -> AiReturn; // false if the explorer is dead, true otherwise
+    fn explorer_ai(&mut self) -> AiReturn;
     fn run(&mut self) {
         self.set_auto_mode(false);
         loop {
